@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Store" ALTER COLUMN "otp" DROP NOT NULL;

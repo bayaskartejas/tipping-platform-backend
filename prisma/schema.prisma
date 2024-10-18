@@ -39,12 +39,12 @@ model Store {
   transactions   Transaction[]
   coupons        Coupon[]
   isVerified     Boolean       @default(false)
-  storeId        Int           @unique
+  storeId        String        @unique
 }
 
 model Staff {
   id           Int           @id @default(autoincrement())
-  storeId      Int
+  storeId      String
   store        Store         @relation("StoreToStaff", fields: [storeId], references: [storeId], onDelete: Cascade) // Bidirectional relation
   name         String
   email        String        @unique

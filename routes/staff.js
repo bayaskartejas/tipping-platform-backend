@@ -5,27 +5,39 @@ const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
 const jwt = require("jsonwebtoken")
 const prisma = new PrismaClient();
+const {staffSchema} = require("../schema")
 
 router.post('/register', async (req, res) => {
   try {
-    const { storeId, name, email, aadhaar, upi, dob, gender, number } = req.body;
-    
-    // Check if staff with this email already exists
+    await prisma.staff.deleteMany({where: {isVerified : false}})
+    let { storeId, name, email, aadhaar, upi, dob, gender, number } = req.body;
+    const result = staffSchema.safeParse(req.body)
+    if (!result.success) {
+      return res.status(400).json({ error: result.error.issues[0].message });
+    }
+    number = number.toString()
+    aadhaar = aadhaar.toString()
     const existingStaff = await prisma.staff.findUnique({ where: { email } });
+    const existingStaff2 = await prisma.staff.findUnique({ where: { number } });
+    const existingStaff3 = await prisma.staff.findUnique({ where: { aadhaar } });
     if (existingStaff) {
       return res.status(400).json({ error: 'Email already registered' });
     }
+    else if(existingStaff2){
+      return res.status(400).json({ error: 'Mobile number already registered' });
+    }
+    else if(existingStaff3){
+      return res.status(400).json({ error: 'Aadhaar number already registered' });
+    }
 
-    // Check if the store exists
     const store = await prisma.store.findUnique({ where: { storeId: parseInt(storeId) } });
     if (!store) {
       return res.status(400).json({ error: 'Invalid StoreId' });
     }
 
     const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); 
 
-    // Create the staff member and update the store's staff array in a transaction
     const [staff] = await prisma.$transaction([
       prisma.staff.create({
         data: {

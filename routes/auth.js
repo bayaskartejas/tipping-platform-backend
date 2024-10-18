@@ -4,17 +4,27 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
+const {customerSchema} = require("../schema")
 
 const prisma = new PrismaClient();
 
 router.post('/register/customer', async (req, res) => {
     try {
-      const { name, email, phone } = req.body;
+      await prisma.customer.deleteMany({where: {isVerified : false}})
+      let { name, email, phone } = req.body;
+      const result = customerSchema.safeParse(req.body)
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.issues[0].message });
+      }
+      phone = phone.toString()
       const existingCustomer = await prisma.customer.findUnique({ where: { email } });
+      const existingCustomer2 = await prisma.customer.findUnique({ where: { phone } });
       if (existingCustomer) {
         return res.status(400).json({ error: 'Email already registered' });
       }
-  
+      else if (existingCustomer2) {
+        return res.status(400).json({ error: 'Mobile number already registered' });
+      }  
       const otp = generateOTP();
       const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
   
@@ -30,7 +40,6 @@ router.post('/register/customer', async (req, res) => {
       });
   
       await sendOTP(email, otp);
-  
       res.status(201).json({ message: 'OTP sent to your email for verification' });
     } catch (error) {
       console.error('Error registering customer:', error);
@@ -43,8 +52,11 @@ router.post('/verify/customer', async (req, res) => {
     const { email, otp } = req.body;
     const customer = await prisma.customer.findUnique({ where: { email } });
 
-    if (!customer || customer.otp !== otp || customer.otpExpires < new Date()) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    if (!customer || customer.otp !== otp ) {
+      return res.status(400).json({ error: 'Invalid OTP' });
+    }
+    else if(customer.otpExpires < new Date()){
+      return res.status(400).json({ error: 'OTP is expired' });
     }
 
     await prisma.customer.update({

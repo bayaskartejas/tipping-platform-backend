@@ -5,6 +5,7 @@ const s3 = require('../utils/s3');
 const authMiddleware = require('../middleware/auth');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
+const {storeSchema} = require("../schema")
 
 const prisma = new PrismaClient();
 const upload = multer();
@@ -14,12 +15,37 @@ router.post('/register', upload.fields([
   { name: 'ownerPhoto', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { name, address, ownerName, ownerDob, ownerGender, ownerPhone, ownerAadhaar, ownerUpi, email } = req.body;
+    let { name, address, ownerName, ownerDob, ownerGender, ownerPhone, ownerAadhaar, ownerUpi, email } = req.body;
+    let storeData = {
+      name,
+      address,
+      ownerName,
+      ownerDob,
+      ownerGender,
+      ownerPhone: parseInt(ownerPhone),
+      ownerAadhaar: parseInt(ownerAadhaar),
+      ownerUpi,
+      email
+    }
+    const result = storeSchema.safeParse(storeData)
+    if (!result.success) {
+      return res.status(400).json({ error: result.error.issues[0].message });
+    }
+    ownerPhone = ownerPhone.toString()
+    ownerAadhaar = ownerAadhaar.toString()
 
-    
+    await prisma.store.deleteMany({where: {isVerified : false}})
     const existingStore = await prisma.store.findUnique({ where: { ownerPhone } });
+    const existingStore2 = await prisma.store.findUnique({ where: { ownerAadhaar } });
+    const existingStore3 = await prisma.store.findUnique({ where: { email } });
     if (existingStore) {
       return res.status(400).json({ error: 'Phone number already registered' });
+    }
+    else if(existingStore2){
+      return res.status(400).json({ error: 'Aadhaar number already registered' });
+    }
+    else if(existingStore3){
+      return res.status(400).json({ error: 'Email already registered' });
     }
 
     // Upload logo and owner photo to S3
@@ -41,7 +67,7 @@ router.post('/register', upload.fields([
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
     const isVerified = false;
-    const storeId = Math.random() * 99999999
+    const storeId = Math.random().toString(36).substring(2, 10).toUpperCase();
     const store = await prisma.store.create({
       data: {
         name,

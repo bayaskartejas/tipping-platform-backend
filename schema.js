@@ -34,7 +34,8 @@ const storeSchema = z.object({
   ownerAadhaar: z.number().min(100000000000, "Enter proper Aadhaar number.").max(999999999999, "Enter proper Aadhaar number."),
   ownerUpi: z.string().regex(upiIdRegex, {
     message: 'Invalid UPI ID format.',
-  })
+  }),
+  password: z.string().max(8, "Passwod should not be more than 8 characters long").min(5, "Password should atleast be 5 characters long.")
 })
 
 module.exports = { customerSchema, staffSchema, storeSchema };

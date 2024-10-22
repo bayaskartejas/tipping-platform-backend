@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 const otpGenerator = require('otp-generator');
+require('dotenv').config();
 
 const createTransporter = async () => {
   const oauth2Client = new OAuth2(
@@ -118,5 +119,6 @@ const sendOTP = async (email, otp) => {
     throw new Error('Failed to send OTP email');
   }
 };
+
 
 module.exports = { generateOTP, sendOTP };

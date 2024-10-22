@@ -5,9 +5,11 @@ const jwt = require('jsonwebtoken');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
 const {customerSchema} = require("../schema")
+require('dotenv').config();
+const { JWT_SECRET } = process.env;
 
 const prisma = new PrismaClient();
-
+let abc =12
 router.post('/register/customer', async (req, res) => {
     try {
       await prisma.customer.deleteMany({where: {isVerified : false}})
@@ -27,14 +29,14 @@ router.post('/register/customer', async (req, res) => {
       }  
       const otp = generateOTP();
       const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
-  
+
       const customer = await prisma.customer.create({
         data: { 
           name, 
           email, 
           phone, 
           otp, 
-          otpExpires,
+          otpExpires, 
           isVerified: false
         },
       });
@@ -73,8 +75,13 @@ router.post('/verify/customer', async (req, res) => {
 
 router.post('/resend-otp', async (req, res) => {
     try {
-      const { email } = req.body;
-      const user = await prisma.customer.findUnique({ where: { email } });
+      const { email, userType } = req.body;
+      const validUserTypes = ['customer', 'store', 'staff'];
+      if (!validUserTypes.includes(userType)) {
+        return res.status(400).json({ error: 'Invalid user type' });
+    }
+    const userModel = prisma[userType];
+    const user = await userModel.findUnique({ where: { email } });
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -82,7 +89,7 @@ router.post('/resend-otp', async (req, res) => {
       const otp = generateOTP();
       const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
   
-      await prisma.customer.update({
+      await userModel.update({
         where: { email },
         data: { otp, otpExpires },
       });
@@ -131,7 +138,7 @@ router.post('/resend-otp', async (req, res) => {
       });
   
       if (!user) {
-        return res.status(400).json({ error: "User doesn't exist !" });
+        return res.status(400).json({ error: "User doesn't exist!" });
       }
       else if (user.otp !== otp){
         return res.status(400).json({ error: "Invalid OTP !" });
@@ -145,7 +152,9 @@ router.post('/resend-otp', async (req, res) => {
         data: { isVerified: true, otp: null, otpExpires: null },
       });
   
-      const token = jwt.sign({ id: user.id, role: 'store' }, process.env.JWT_SECRET);
+      const token = jwt.sign({ id: user.id, role: 'store' }, JWT_SECRET);
+      console.log(JWT_SECRET);
+      
       res.json({ message: 'Email verified successfully', token });
     } catch (error) {
       console.error('Error verifying OTP:', error);

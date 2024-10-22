@@ -5,6 +5,8 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const crypto = require('crypto');
+require('dotenv').config();
+const { JWT_SECRET } = process.env;
 
 const prisma = new PrismaClient();
 

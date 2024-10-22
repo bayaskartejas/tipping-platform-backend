@@ -112,7 +112,7 @@ router.get('/store/:storeId', async (req, res) => {
     let { storeId } = req.params;
     storeId = storeId.replace(":", "").trim();
     const helpers = await prisma.staff.findMany({
-      where: { storeId: parseInt(storeId) },
+      where: { storeId },
       select: {
         id: true,
         name: true,

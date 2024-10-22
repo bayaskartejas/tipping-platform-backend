@@ -1,21 +1,24 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const multer = require('multer');
-const s3 = require('../utils/s3');
+const { putObject, getObjectURL } = require('../utils/s3');
 const authMiddleware = require('../middleware/auth');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
 const {storeSchema} = require("../schema")
+require('dotenv').config();
+let mime;
+(async () => {
+    mime = await import('mime');
+})();
 
 const prisma = new PrismaClient();
 const upload = multer();
-
-router.post('/register', upload.fields([
-  { name: 'logo', maxCount: 1 },
-  { name: 'ownerPhoto', maxCount: 1 }
-]), async (req, res) => {
+let logoFileType;
+let photoFileType
+router.post('/register', async (req, res) => {
   try {
-    let { name, address, ownerName, ownerDob, ownerGender, ownerPhone, ownerAadhaar, ownerUpi, email } = req.body;
+    let { name, address, ownerName, ownerDob, ownerGender, ownerPhone, ownerAadhaar, ownerUpi, email, password, logoFile, ownerPhotoFile } = req.body;
     let storeData = {
       name,
       address,
@@ -25,76 +28,112 @@ router.post('/register', upload.fields([
       ownerPhone: parseInt(ownerPhone),
       ownerAadhaar: parseInt(ownerAadhaar),
       ownerUpi,
-      email
-    }
-    const result = storeSchema.safeParse(storeData)
+      email,
+      password
+    };
+    
+    const result = storeSchema.safeParse(storeData);
     if (!result.success) {
       return res.status(400).json({ error: result.error.issues[0].message });
     }
-    ownerPhone = ownerPhone.toString()
-    ownerAadhaar = ownerAadhaar.toString()
-
-    await prisma.store.deleteMany({where: {isVerified : false}})
+    
+    ownerPhone = ownerPhone.toString();
+    ownerAadhaar = ownerAadhaar.toString();
+    
+    await prisma.store.deleteMany({ where: { isVerified: false } });
+    
     const existingStore = await prisma.store.findUnique({ where: { ownerPhone } });
     const existingStore2 = await prisma.store.findUnique({ where: { ownerAadhaar } });
     const existingStore3 = await prisma.store.findUnique({ where: { email } });
+    
     if (existingStore) {
       return res.status(400).json({ error: 'Phone number already registered' });
-    }
-    else if(existingStore2){
+    } else if (existingStore2) {
       return res.status(400).json({ error: 'Aadhaar number already registered' });
-    }
-    else if(existingStore3){
+    } else if (existingStore3) {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
-    // Upload logo and owner photo to S3
-    // const logoKey = `store-logos/${Date.now()}-${req.files.logo[0].originalname}`;
-    // const ownerPhotoKey = `owner-photos/${Date.now()}-${req.files.ownerPhoto[0].originalname}`;
+    let storeId;
+    let isStoreIdUnique = false;
+    while (!isStoreIdUnique) {
+      storeId = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const existingStoreId = await prisma.store.findUnique({ where: { storeId } });
+      if (!existingStoreId) {
+        isStoreIdUnique = true;
+      }
+    }
 
-    // await s3.upload({
-    //   Bucket: process.env.S3_BUCKET_NAME,
-    //   Key: logoKey,
-    //   Body: req.files.logo[0].buffer,
-    // }).promise();
-
-    // await s3.upload({
-    //   Bucket: process.env.S3_BUCKET_NAME,
-    //   Key: ownerPhotoKey,
-    //   Body: req.files.ownerPhoto[0].buffer,
-    // }).promise();
+    const logoKey = `store-logos/logo-${ownerPhone}.${mime.default.getExtension(logoFile.contentType)}`;
+    const ownerPhotoKey = `owner-photos/photo-${ownerPhone}.${mime.default.getExtension(ownerPhotoFile.contentType)}`;
 
     const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     const isVerified = false;
-    const storeId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    
+
+    // Generate presigned URLs for image upload
+    const logoPutUrl = logoFile ? await putObject(`logo-${ownerPhone}.${mime.default.getExtension(logoFile.contentType)}`, logoFile.contentType, "store-logos") : null;
+    const ownerPhotoPutUrl = ownerPhotoFile ? await putObject(`photo-${ownerPhone}.${mime.default.getExtension(ownerPhotoFile.contentType)}`, ownerPhotoFile.contentType, "owner-photos") : null;
+    logoFileType = mime.default.getExtension(logoFile.contentType);
+    photoFileType = mime.default.getExtension(ownerPhotoFile.contentType);
+    // Create the new store
     const store = await prisma.store.create({
       data: {
         name,
         address,
-        logo: `${Math.random().toString()}`,/*`https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${logoKey}`,*/
+        logo: logoKey,
         ownerName,
         ownerDob: new Date(ownerDob),
         ownerGender,
         ownerPhone,
         ownerAadhaar,
         email,
-        ownerPhoto: `${Math.random().toString()}`,/*`https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${ownerPhotoKey}`,*/
+        ownerPhoto: ownerPhotoKey,
         ownerUpi,
         otp,
         otpExpires,
         isVerified,
-        storeId
+        storeId,
+        password
       },
     });
 
+    // Send OTP for email verification
     await sendOTP(email, otp);
 
-    res.status(201).json({ message: 'OTP sent to your email for verification' });
+    res.status(201).json({ 
+      message: 'OTP sent to your email for verification',
+      logoPutUrl,
+      ownerPhotoPutUrl,
+      storeId
+    });
   } catch (error) {
     console.log(error);
-    
     res.status(500).json({ error: 'Error registering store' });
+  }
+});
+
+// New endpoint to get signed URLs for viewing images
+router.get('/image-urls/:storeId', async (req, res) => {
+  try {
+    let { storeId } = req.params;
+    storeId = storeId.replace(":", "").trim();
+    console.log(storeId);
+    
+    const store = await prisma.store.findUnique({ where: { storeId } });
+    
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const logoUrl = store.logo ? await getObjectURL(store.logo) : null;
+    const ownerPhotoUrl = store.ownerPhoto ? await getObjectURL(store.ownerPhoto) : null;
+
+    res.json({ logoUrl, ownerPhotoUrl });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error getting image URLs' });
   }
 });
 
@@ -138,7 +177,7 @@ router.get('/:storeId', async (req, res) => {
     console.log("storeId", storeId);
 
     const store = await prisma.store.findUnique({
-      where: { storeId: parseInt(storeId) },
+      where: { storeId },
       select: {
         name: true,
         email: true,

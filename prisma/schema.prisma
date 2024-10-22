@@ -40,6 +40,7 @@ model Store {
   coupons        Coupon[]
   isVerified     Boolean       @default(false)
   storeId        String        @unique
+  password       String
 }
 
 model Staff {
@@ -60,8 +61,6 @@ model Staff {
   otp          String?
   otpExpires   DateTime?
 }
-
-
 
 
 model PlatformReview {

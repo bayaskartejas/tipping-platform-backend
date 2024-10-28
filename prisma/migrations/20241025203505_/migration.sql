@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Store" ADD COLUMN     "avgRating" DOUBLE PRECISION NOT NULL DEFAULT 0;

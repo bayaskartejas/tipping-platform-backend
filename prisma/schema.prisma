@@ -14,9 +14,11 @@ model Customer {
   phone        String        @unique
   coupons      Coupon[]
   transactions Transaction[]
+  customerPhoto String 
   otp          String?
   otpExpires   DateTime?
   isVerified   Boolean       @default(false)
+  password     String
 }
 
 model Store {
@@ -31,10 +33,12 @@ model Store {
   ownerAadhaar   String        @unique
   email          String        @unique
   ownerPhoto     String
+  cover          String
   ownerUpi       String
   otp            String?
   otpExpires     DateTime?
   reviews        Json[]
+  avgRating      Float         @default(0)
   staff          Staff[]       @relation("StoreToStaff") // Relation name is provided here
   transactions   Transaction[]
   coupons        Coupon[]
@@ -51,8 +55,10 @@ model Staff {
   email        String        @unique
   aadhaar      String        @unique
   upi          String
-  dob          DateTime
+  dob          DateTime                                                 
+  photo        String?
   gender       String
+  password     String
   number       String        @unique
   reviews      Json[]
   avgRating    Float         @default(0)

@@ -1,4 +1,4 @@
-const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 require('dotenv').config();
 const s3Client = new S3Client({
@@ -29,6 +29,15 @@ async function putObject (filename, contentType, folder) {
   return url;
 }
 
+async function deleteObject (key) {
+  const command = new DeleteObjectCommand({
+    Bucket: process.env.S3_BUCKET_NAME, // Your S3 bucket name
+    Key: key, 
+  })
+  const response = await s3Client.send(command)
+  return response;
+}
+
 // async function init() {
 //   console.log(
 //     "URL",
@@ -38,4 +47,4 @@ async function putObject (filename, contentType, folder) {
 // init()
 
 
-module.exports = { s3Client, getObjectURL, putObject };
+module.exports = { s3Client, getObjectURL, putObject, deleteObject };

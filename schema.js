@@ -7,7 +7,8 @@ const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/web
 const customerSchema = z.object({
   name: z.string(),
   email: z.string().email("Enter proper email."),
-  phone: z.number().min(6000000000, "Enter proper mobile number.").max(9999999999, "Enter proper mobile number.")
+  phone: z.number().min(6000000000, "Enter proper mobile number.").max(9999999999, "Enter proper mobile number."),
+  password: z.string().max(20, "Passwod should not be that long").min(5, "Password should atleast be 5 characters long.")
 });
 
 const staffSchema = z.object({
@@ -20,7 +21,8 @@ const staffSchema = z.object({
   }),
   dob: z.string(),
   gender: z.enum(['Male', 'Female', 'Other']),
-  number: z.number().min(6000000000, "Enter proper mobile number.").max(9999999999, "Enter proper mobile number.")
+  number: z.number().min(6000000000, "Enter proper mobile number.").max(9999999999, "Enter proper mobile number."),
+  password: z.string().max(20, "Passwod should not be that long").min(5, "Password should atleast be 5 characters long.")
 })
 
 const storeSchema = z.object({
@@ -35,7 +37,7 @@ const storeSchema = z.object({
   ownerUpi: z.string().regex(upiIdRegex, {
     message: 'Invalid UPI ID format.',
   }),
-  password: z.string().max(8, "Passwod should not be more than 8 characters long").min(5, "Password should atleast be 5 characters long.")
+  password: z.string().max(20, "Passwod should not be that long").min(5, "Password should atleast be 5 characters long.")
 })
 
 module.exports = { customerSchema, staffSchema, storeSchema };

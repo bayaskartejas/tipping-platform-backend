@@ -28,6 +28,7 @@
     "nodemailer": "^6.9.15",
     "otp-generator": "^4.0.1",
     "paytm-pg-node-sdk": "^1.0.4",
+    "pg": "^8.13.0",
     "prisma": "^5.20.0",
     "sharp": "^0.33.5",
     "uuid": "^10.0.0",

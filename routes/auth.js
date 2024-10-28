@@ -1,24 +1,26 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
+const saltRounds = 10;
 const jwt = require('jsonwebtoken');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
-const {customerSchema} = require("../schema")
+const {customerSchema} = require("../schema");
+const { hash } = require('crypto');
 require('dotenv').config();
 const { JWT_SECRET } = process.env;
 
 const prisma = new PrismaClient();
-let abc =12
 router.post('/register/customer', async (req, res) => {
     try {
       await prisma.customer.deleteMany({where: {isVerified : false}})
-      let { name, email, phone } = req.body;
+      let { name, email, phone, password } = req.body;
       const result = customerSchema.safeParse(req.body)
       if (!result.success) {
         return res.status(400).json({ error: result.error.issues[0].message });
       }
       phone = phone.toString()
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
       const existingCustomer = await prisma.customer.findUnique({ where: { email } });
       const existingCustomer2 = await prisma.customer.findUnique({ where: { phone } });
       if (existingCustomer) {
@@ -37,7 +39,9 @@ router.post('/register/customer', async (req, res) => {
           phone, 
           otp, 
           otpExpires, 
-          isVerified: false
+          isVerified: false,
+          password: hashedPassword,
+          customerPhoto: ""
         },
       });
   
@@ -122,7 +126,7 @@ router.post('/resend-otp', async (req, res) => {
       });
   
       const token = jwt.sign({ id: user.id, role: 'customer' }, process.env.JWT_SECRET);
-      res.json({ message: 'Email verified successfully', token });
+      res.status(201).json({ message: 'Email verified successfully', token});
     } catch (error) {
       console.error('Error verifying OTP:', error);
       res.status(500).json({ error: 'Error verifying OTP' });
@@ -155,13 +159,134 @@ router.post('/resend-otp', async (req, res) => {
       const token = jwt.sign({ id: user.id, role: 'store' }, JWT_SECRET);
       console.log(JWT_SECRET);
       
-      res.json({ message: 'Email verified successfully', token });
+      res.json({ message: 'Email verified successfully', token, storeId: user.storeId });
     } catch (error) {
       console.error('Error verifying OTP:', error);
       res.status(500).json({ error: 'Error verifying OTP' });
     }
   });
 
+// Owner login endpoint
+router.post('/login-store', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const owner = await prisma.store.findUnique({
+      where: { email: email }
+    });
+
+    if (!owner) {
+      return res.status(401).json({ error: 'Invalid email' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, owner.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { id: owner.id, email: owner.email, role: 'owner' },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: owner.id,
+        email: owner.email,
+        name: owner.ownerName,
+        role: 'store',
+        storeId: owner.storeId
+      }
+    });
+  } catch (error) {
+    console.error('Owner login error:', error);
+    res.status(500).json({ error: 'An error occurred during login' });
+  }
+});
+
+// Staff login endpoint
+router.post('/login-staff', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const staff = await prisma.staff.findUnique({
+      where: { email: email }
+    });
+
+    if (!staff) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, staff.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { id: staff.id, email: staff.email, role: 'staff' },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: staff.id,
+        email: staff.email,
+        name: staff.name,
+        role: 'staff',
+        storeId: staff.storeId
+      }
+    });
+  } catch (error) {
+    console.error('Staff login error:', error);
+    res.status(500).json({ error: 'An error occurred during login' });
+  }
+});
+
+// Customer login endpoint
+router.post('/login-customer', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const customer = await prisma.customer.findUnique({
+      where: { email: email }
+    });
+
+    if (!customer) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, customer.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { id: customer.id, email: customer.email, role: 'customer' },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: customer.id,
+        email: customer.email,
+        name: customer.name,
+        role: 'customer'
+      }
+    });
+  } catch (error) {
+    console.error('Customer login error:', error);
+    res.status(500).json({ error: 'An error occurred during login' });
+  }
+});
   
 
 

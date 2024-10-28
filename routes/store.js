@@ -1,11 +1,13 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const multer = require('multer');
-const { putObject, getObjectURL } = require('../utils/s3');
+const { putObject, getObjectURL, deleteObject } = require('../utils/s3');
 const authMiddleware = require('../middleware/auth');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
 const {storeSchema} = require("../schema")
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 require('dotenv').config();
 let mime;
 (async () => {
@@ -13,12 +15,14 @@ let mime;
 })();
 
 const prisma = new PrismaClient();
-const upload = multer();
-let logoFileType;
-let photoFileType
+
 router.post('/register', async (req, res) => {
   try {
     let { name, address, ownerName, ownerDob, ownerGender, ownerPhone, ownerAadhaar, ownerUpi, email, password, logoFile, ownerPhotoFile } = req.body;
+    await prisma.store.deleteMany({ where: { isVerified: false } });
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
     let storeData = {
       name,
       address,
@@ -29,18 +33,24 @@ router.post('/register', async (req, res) => {
       ownerAadhaar: parseInt(ownerAadhaar),
       ownerUpi,
       email,
-      password
+      password 
     };
+
+    if(!logoFile){
+      return res.status(400).json({ error: "Please select a logo" });
+    }
+    if(!ownerPhotoFile){
+      return res.status(400).json({ error: "Please select an owner photo" });
+    }
     
     const result = storeSchema.safeParse(storeData);
     if (!result.success) {
       return res.status(400).json({ error: result.error.issues[0].message });
     }
-    
+
+    storeData.password = hashedPassword
     ownerPhone = ownerPhone.toString();
     ownerAadhaar = ownerAadhaar.toString();
-    
-    await prisma.store.deleteMany({ where: { isVerified: false } });
     
     const existingStore = await prisma.store.findUnique({ where: { ownerPhone } });
     const existingStore2 = await prisma.store.findUnique({ where: { ownerAadhaar } });
@@ -75,8 +85,10 @@ router.post('/register', async (req, res) => {
     // Generate presigned URLs for image upload
     const logoPutUrl = logoFile ? await putObject(`logo-${ownerPhone}.${mime.default.getExtension(logoFile.contentType)}`, logoFile.contentType, "store-logos") : null;
     const ownerPhotoPutUrl = ownerPhotoFile ? await putObject(`photo-${ownerPhone}.${mime.default.getExtension(ownerPhotoFile.contentType)}`, ownerPhotoFile.contentType, "owner-photos") : null;
+
     logoFileType = mime.default.getExtension(logoFile.contentType);
     photoFileType = mime.default.getExtension(ownerPhotoFile.contentType);
+    
     // Create the new store
     const store = await prisma.store.create({
       data: {
@@ -90,12 +102,13 @@ router.post('/register', async (req, res) => {
         ownerAadhaar,
         email,
         ownerPhoto: ownerPhotoKey,
+        cover: "",
         ownerUpi,
         otp,
         otpExpires,
         isVerified,
         storeId,
-        password
+        password: hashedPassword // Use the hashed password
       },
     });
 
@@ -114,6 +127,77 @@ router.post('/register', async (req, res) => {
   }
 });
 
+router.post('/update-cover', authMiddleware, async (req, res) => {
+  try {
+    const { storeId, cover } = req.body;
+    const store = await prisma.store.findUnique({ where: { storeId } });
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const coverKey = `store-covers/cover-${storeId}.${mime.default.getExtension(cover.contentType)}`;
+    const coverPutUrl = await putObject(`cover-${storeId}.${mime.default.getExtension(cover.contentType)}`, cover.contentType, "store-covers");
+
+    await prisma.store.update({
+      where: { storeId },
+      data: { cover: coverKey }
+    });
+
+    res.status(200).json({ coverPutUrl });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating cover image' });
+  }
+});
+
+// Endpoint for logo image upload/update
+router.post('/update-logo', authMiddleware, async (req, res) => {
+  try {
+    const { storeId, logoFile } = req.body;
+    const store = await prisma.store.findUnique({ where: { storeId } });
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const logoKey = `store-logos/logo-${storeId}.${mime.default.getExtension(logoFile.contentType)}`;
+    const logoPutUrl = await putObject(`logo-${storeId}.${mime.default.getExtension(logoFile.contentType)}`, logoFile.contentType, "store-logos");
+
+    await prisma.store.update({
+      where: { storeId },
+      data: { logo: logoKey }
+    });
+
+    res.status(200).json({ logoPutUrl });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating logo image' });
+  }
+});
+
+// Endpoint for owner photo upload/update
+router.post('/update-ownerPhoto', authMiddleware, async (req, res) => {
+  try {
+    const { storeId, ownerPhotoFile } = req.body;
+    const store = await prisma.store.findUnique({ where: { storeId } });
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const ownerPhotoKey = `owner-photos/photo-${storeId}.${mime.default.getExtension(ownerPhotoFile.contentType)}`;
+    const ownerPhotoPutUrl = await putObject(`photo-${storeId}.${mime.default.getExtension(ownerPhotoFile.contentType)}`, ownerPhotoFile.contentType, "owner-photos");
+
+    await prisma.store.update({
+      where: { storeId },
+      data: { ownerPhoto: ownerPhotoKey }
+    });
+
+    res.status(200).json({ ownerPhotoPutUrl });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating owner photo' });
+  }
+});
+
 // New endpoint to get signed URLs for viewing images
 router.get('/image-urls/:storeId', async (req, res) => {
   try {
@@ -129,10 +213,44 @@ router.get('/image-urls/:storeId', async (req, res) => {
 
     const logoUrl = store.logo ? await getObjectURL(store.logo) : null;
     const ownerPhotoUrl = store.ownerPhoto ? await getObjectURL(store.ownerPhoto) : null;
+    const coverUrl = store.cover ? await getObjectURL(store.cover) : null
 
-    res.json({ logoUrl, ownerPhotoUrl });
+    res.json({ logoUrl, ownerPhotoUrl, coverUrl });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ error: 'Error getting image URLs' });
+  }
+});
+
+router.get('/staff-image-urls/:storeId', async (req, res) => {
+  try {
+    let { storeId } = req.params;
+    storeId = storeId.replace(":", "").trim();
+    console.log('Fetching image URLs for store:', storeId);
+    
+    const store = await prisma.store.findUnique({
+      where: { storeId },
+      include: { staff: true }
+    });
+    
+    if (!store) {
+      console.log('Store not found:', storeId);
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const staffPhotoUrls = {};
+    for (const staffMember of store.staff) {
+      if (staffMember.photo) {
+        staffPhotoUrls[staffMember.id] = await getObjectURL(staffMember.photo);
+      }
+    }
+
+    console.log('Successfully fetched image URLs for store:', storeId);
+    res.json({ 
+      staffPhotoUrls
+    });
+  } catch (error) {
+    console.error('Error getting image URLs:', error);
     res.status(500).json({ error: 'Error getting image URLs' });
   }
 });
@@ -161,11 +279,12 @@ router.get('/image-urls/:storeId', async (req, res) => {
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
     const store = await prisma.store.findUnique({
-      where: { id: req.user.id },
+      where: { id: req.user.id},
       include: { staff: true },
     });
     res.json(store);
   } catch (error) {
+    console.log(error )
     res.status(500).json({ error: 'Error fetching store profile' });
   }
 });

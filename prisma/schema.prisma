@@ -12,9 +12,9 @@ model Customer {
   name         String
   email        String        @unique
   phone        String        @unique
-  coupons      Coupon[]
   transactions Transaction[]
   customerPhoto String 
+  coupons      CustomerCoupon[]
   otp          String?
   otpExpires   DateTime?
   isVerified   Boolean       @default(false)
@@ -45,6 +45,7 @@ model Store {
   isVerified     Boolean       @default(false)
   storeId        String        @unique
   password       String
+  googleReviewUrl String?
 }
 
 model Staff {
@@ -92,14 +93,38 @@ model Transaction {
   upiTransactionId String?
 }
 
+model CustomerCoupon {
+  id              Int      @id @default(autoincrement())
+  customer        Customer @relation(fields: [customerId], references: [id])
+  customerId      Int
+  coupon          Coupon   @relation(fields: [couponId], references: [id])
+  couponId        Int
+  timesCouponUsed Int      @default(0)
+
+  @@unique([customerId, couponId])
+}
+
 model Coupon {
-  id         Int      @id @default(autoincrement())
-  customerId Int
-  storeId    Int
-  storeName  String
-  discount   Float
-  validity   DateTime
-  code       String   @unique
-  customer   Customer @relation(fields: [customerId], references: [id])
-  store      Store    @relation(fields: [storeId], references: [id])
+  id                 Int      @id @default(autoincrement())
+  title              String
+  description        String
+  discountType       String
+  discountValue      Float
+  minimumPurchase    Float?
+  couponCode         String   @unique
+  expirationDate     DateTime
+  totalUses          Int
+  usesPerCustomer    Int
+  applicableItems    String
+  specificItems      String?
+  customerRestriction String
+  termsConditions    String?
+  visibility         Json
+  contactInfo        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  store              Store    @relation(fields: [storeId], references: [id])
+  storeId            Int
+  customers          CustomerCoupon[]
+  customerId         Int?
 }

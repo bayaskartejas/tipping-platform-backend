@@ -37,7 +37,7 @@ router.get('/coupons', authMiddleware, async (req, res) => {
 
 router.post('/update-profile-image', authMiddleware, async (req, res) => {
   try {
-    const { phone, customerPhotoFile } = req.body;
+    const { phone, customerPhotoFile } = req.body;  
     const customer = await prisma.customer.findUnique({ where: { phone } });
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
@@ -46,7 +46,7 @@ router.post('/update-profile-image', authMiddleware, async (req, res) => {
     const customerPhotoKey = `customer-photos/photo-${phone}.${mime.default.getExtension(customerPhotoFile.contentType)}`;
     const customerPhotoPutUrl = await putObject(`photo-${phone}.${mime.default.getExtension(customerPhotoFile.contentType)}`, customerPhotoFile.contentType, "customer-photos");
     
-    await prisma.customer.update({
+    await prisma.customer.update({       
       where: { phone },
       data: { customerPhoto: customerPhotoKey }
     });
@@ -78,5 +78,110 @@ router.get('/image-urls/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Error getting image URLs' });
   }
 });
+
+router.get('/get-coupon-info/:storeId', async (req, res) => {
+  try {
+    let { storeId } = req.params;
+    storeId = storeId.replace(":", "").trim();
+    const { phone } = req.query;
+
+    // Find the store
+    const store = await prisma.store.findUnique({
+      where: { storeId },
+      include: { coupons: true },
+    });
+
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    // Find the customer
+    const customer = await prisma.customer.findUnique({
+      where: { phone },
+      include: { coupons: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Filter coupons
+    const eligibleCoupons = store.coupons.filter(coupon => {
+      const customerCoupon = customer.coupons.find(c => c.couponId === coupon.id);
+      return coupon.totalUses > 0 && (!customerCoupon || customerCoupon.usesPerCustomer > customerCoupon.timesCouponUsed);
+    });
+
+    res.json({ coupons: eligibleCoupons });
+  } catch (error) {
+    console.error('Error fetching coupon info:', error);
+    res.status(500).json({ error: 'Error fetching coupon info' });
+  }
+});
+
+// In your customer.js route file
+
+router.post('/update-coupon/:storeId', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { phone, couponId } = req.body;
+
+    // Find the customer
+    const customer = await prisma.customer.findUnique({
+      where: { phone },
+      include: { coupons: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Find the coupon
+    const coupon = await prisma.coupon.findUnique({
+      where: { id: couponId },
+    });
+
+    if (!coupon) {
+      return res.status(404).json({ error: 'Coupon not found' });
+    }
+
+    // Find or create the CustomerCoupon record
+    let customerCoupon = await prisma.customerCoupon.findUnique({
+      where: {
+        customerId_couponId: {
+          customerId: customer.id,
+          couponId: coupon.id,
+        },
+      },
+    });
+
+    if (!customerCoupon) {
+      customerCoupon = await prisma.customerCoupon.create({
+        data: {
+          customerId: customer.id,
+          couponId: coupon.id,
+          timesCouponUsed: 0,
+        },
+      });
+    }
+
+    // Update the CustomerCoupon and Coupon in a transaction
+    const updatedData = await prisma.$transaction([
+      prisma.customerCoupon.update({
+        where: { id: customerCoupon.id },
+        data: { timesCouponUsed: { increment: 1 } },
+      }),
+      prisma.coupon.update({
+        where: { id: couponId },
+        data: { totalUses: { decrement: 1 } },
+      }),
+    ]);
+
+    res.json({ message: 'Coupon usage updated successfully', data: updatedData });
+  } catch (error) {
+    console.error('Error updating coupon usage:', error);
+    res.status(500).json({ error: 'Error updating coupon usage' });
+  }
+});
+
 
 module.exports = router;

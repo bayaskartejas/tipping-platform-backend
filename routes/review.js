@@ -5,66 +5,114 @@ const router = express.Router();
 
 const prisma = new PrismaClient();
 
-router.post('/platform', async (req, res) => {
+// Store review
+router.post('/store/:storeId', async (req, res) => {
   try {
-    const { name, title, text, rating } = req.body;
-    const review = await prisma.platformReview.create({
-      data: { name, title, text, rating: parseInt(rating) },
-    });
-    res.status(201).json(review);
-  } catch (error) {
-    res.status(500).json({ error: 'Error adding platform review' });
-  }
-});
+    let { storeId } = req.params;
+    storeId = storeId.replace(":", "").trim();
+    const { phone, rating, title, content } = req.body;
 
-router.post('/store', authMiddleware, async (req, res) => {
-  try {
-    const { storeId, rating, comment } = req.body;
-    const store = await prisma.store.findUnique({ where: { id: parseInt(storeId) } });
-    if (!store) {
-      return res.status(404).json({ error: 'Store not found' });
-    }
+    // Find user by phone or use "Unknown User"
+    const user = phone ? await prisma.customer.findUnique({ where: { phone } }) : null;
+    const userName = user ? user.name : 'Unknown User';
 
+    // Create and save the store review
+    const review = { user: userName, rating, title, content };
+
+    // Update store's reviews array and calculate new average rating
     const updatedStore = await prisma.store.update({
-      where: { id: parseInt(storeId) },
+      where: { storeId },
       data: {
-        reviews: {
-          push: { id: Date.now(), name: req.user.name, rating: parseFloat(rating), comment },
-        },
-      },
+        reviews: { push: review },
+        avgRating: {
+          set: await calculateAverageRating(storeId, "store") // Custom function to calculate average rating
+        }
+      }
     });
 
-    res.status(201).json(updatedStore);
+    res.status(201).json({ message: 'Store review submitted successfully', review: updatedStore });
   } catch (error) {
-    res.status(500).json({ error: 'Error adding store review' });
+    console.error('Error submitting store review:', error);
+    res.status(500).json({ error: 'Error submitting review' });
   }
 });
 
-router.post('/staff', authMiddleware, async (req, res) => {
+// Staff review
+router.post('/staff/:staffId', async (req, res) => {
   try {
-    const { staffId, rating, comment } = req.body;
-    const staff = await prisma.staff.findUnique({ where: { id: parseInt(staffId) } });
-    if (!staff) {
-      return res.status(404).json({ error: 'Staff not found' });
-    }
+    const { staffId } = req.params;
+    const { phone, rating, title, content } = req.body;
 
+    // Find user by phone or use "Unknown User"
+    const user = phone ? await prisma.customer.findUnique({ where: { phone } }) : null;
+    const userName = user ? user.name : 'Unknown User';
+
+    // Create and save the staff review
+    const review = { user: userName, rating, title, content };
+
+    // Update staff's reviews array and calculate new average rating
     const updatedStaff = await prisma.staff.update({
       where: { id: parseInt(staffId) },
       data: {
-        reviews: {
-          push: { id: Date.now(), 
-            name: req.user.name, rating: parseFloat(rating), comment },
-        },
+        reviews: { push: review },
         avgRating: {
-          set: (staff.avgRating * staff.reviews.length + parseFloat(rating)) / (staff.reviews.length + 1),
-        },
-      },
+          set: await calculateAverageRating(staffId, "staff") // Custom function to calculate average rating
+        }
+      }
     });
 
-    res.status(201).json(updatedStaff);
+    res.status(201).json({ message: 'Staff review submitted successfully', review: updatedStaff });
   } catch (error) {
-    res.status(500).json({ error: 'Error adding staff review' });
+    console.error('Error submitting staff review:', error);
+    res.status(500).json({ error: 'Error submitting review' });
   }
 });
+
+// Platform review
+router.post('/platform', async (req, res) => {
+  try {
+    const { phone, rating, title, content } = req.body;
+
+    // Find user by phone or use "Unknown User"
+    const user = phone ? await prisma.customer.findUnique({ where: { phone } }) : null;
+    const userName = user ? user.name : 'Unknown User';
+
+    // Create and save the platform review
+    const platformReview = await prisma.platformReview.create({
+      data: {
+        name: userName,
+        rating,
+        title,
+        text: content
+      }
+    });
+
+    res.status(201).json({ message: 'Platform review submitted successfully', review: platformReview });
+  } catch (error) {
+    console.error('Error submitting platform review:', error);
+    res.status(500).json({ error: 'Error submitting review' });
+  }
+});
+
+// Helper function to calculate average rating
+async function calculateAverageRating(entityId, entityType) {
+  let entity;
+  if(entityType == "store"){
+    entity = await prisma.store.findUnique({
+      where: { storeId: entityId },
+      select: { reviews: true }
+    });
+  }
+  else if(entityType == "staff"){
+    entity = await prisma.staff.findUnique({
+      where: { id: parseInt(entityId) },
+      select: { reviews: true }
+    });
+  }
+  const reviews = entity.reviews || [];
+  const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+  return reviews.length ? totalRating / reviews.length : 0;
+}
+
 
 module.exports = router;

@@ -40,4 +40,28 @@ const storeSchema = z.object({
   password: z.string().max(20, "Passwod should not be that long").min(5, "Password should atleast be 5 characters long.")
 })
 
-module.exports = { customerSchema, staffSchema, storeSchema };
+const couponSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Description is required"),
+  discountType: z.enum(['percentage', 'fixed']),
+  discountValue: z.number().positive("Discount value must be positive"),
+  minimumPurchase: z.number().nonnegative("Minimum purchase must be non-negative").optional(),
+  couponCode: z.string().min(3, "Coupon code must be at least 3 characters"),
+  expirationDate: z.string().refine((date) => !isNaN(Date.parse(date)), {
+    message: "Invalid date format",
+  }),
+  totalUses: z.number().int().positive("Total uses must be a positive integer"),
+  usesPerCustomer: z.number().int().positive("Uses per customer must be a positive integer"),
+  applicableItems: z.enum(['all', 'specific']),
+  specificItems: z.string().optional(),
+  customerRestriction: z.enum(['none', 'new', 'existing']),
+  termsConditions: z.string().optional(),
+  visibility: z.object({
+    website: z.boolean(),
+    email: z.boolean(),
+    qrCode: z.boolean(),
+  }),
+  contactInfo: z.string().optional(),
+});
+
+module.exports = { customerSchema, staffSchema, storeSchema, couponSchema };

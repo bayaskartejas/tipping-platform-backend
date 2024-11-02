@@ -2,34 +2,48 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
-
+const { couponSchema } = require("../schema")
 const prisma = new PrismaClient();
 
-router.post('/generate', authMiddleware, async (req, res) => {
+router.post('/create-coupon/:storeId', authMiddleware, async (req, res) => {
   try {
-    const { storeId, discount, validity } = req.body;
-    const store = await prisma.store.findUnique({ where: { id: parseInt(storeId) } });
+    let { storeId } = req.params;
+    storeId = storeId.replace(":", "").trim();
+    const validationResult = couponSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: validationResult.error.issues });
+    }
+
+    const store = await prisma.store.findUnique({ where: { storeId } });
     if (!store) {
       return res.status(404).json({ error: 'Store not found' });
     }
 
-    const code = Math.random().toString(36).substring(2, 9).toUpperCase();
     const coupon = await prisma.coupon.create({
       data: {
-        customerId: req.user.id,
-        storeId: parseInt(storeId),
-        storeName: store.name,
-        discount: parseFloat(discount),
-        validity: new Date(validity),
-        code,
+        ...req.body,
+        store: { connect: { id: store.id } },
+        createdAt: new Date(),    
+        updatedAt: new Date(),
+      },
+    });
+
+    await prisma.store.update({
+      where: { storeId },
+      data: {
+        coupons: {
+          connect: { id: coupon.id },
+        },
       },
     });
 
     res.status(201).json(coupon);
   } catch (error) {
-    res.status(500).json({ error: 'Error generating coupon' });
+    console.error('Error creating coupon:', error);
+    res.status(500).json({ error: 'Error creating coupon' });
   }
 });
+
 
 router.get('/customer', authMiddleware, async (req, res) => {
   try {

@@ -231,7 +231,7 @@ router.get('/staff-image-urls/:storeId', async (req, res) => {
     const store = await prisma.store.findUnique({
       where: { storeId },
       include: { staff: true }
-    });
+    }); 
     
     if (!store) {
       console.log('Store not found:', storeId);

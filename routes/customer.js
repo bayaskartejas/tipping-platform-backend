@@ -13,7 +13,7 @@ let mime;
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
     const customer = await prisma.customer.findUnique({
-      where: { id: req.user.userId },
+      where: { id: req.user.id },
       include: { coupons: true },
     });
     res.json(customer);

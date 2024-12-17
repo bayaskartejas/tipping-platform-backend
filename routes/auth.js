@@ -165,7 +165,7 @@ router.post('/resend-otp', async (req, res) => {
           email: user.email,
           name: user.ownerName,
           role: 'store',
-          storeId: owner.storeId
+          storeId: user.storeId
         }
        });
     } catch (error) {

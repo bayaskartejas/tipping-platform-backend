@@ -159,7 +159,15 @@ router.post('/resend-otp', async (req, res) => {
       const token = jwt.sign({ id: user.id, role: 'store' }, JWT_SECRET);
       console.log(JWT_SECRET);
       
-      res.json({ message: 'Email verified successfully', token, storeId: user.storeId });
+      res.json({ message: 'Email verified successfully', token, storeId: user.storeId, 
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.ownerName,
+          role: 'store',
+          storeId: owner.storeId
+        }
+       });
     } catch (error) {
       console.error('Error verifying OTP:', error);
       res.status(500).json({ error: 'Error verifying OTP' });

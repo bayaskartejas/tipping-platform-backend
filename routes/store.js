@@ -167,7 +167,7 @@ router.post('/update-logo', authMiddleware, async (req, res) => {
       data: { logo: logoKey }
     });
 
-    res.status(200).json({ logoPutUrl });
+    res.status(200).json({ Url: logoPutUrl });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error updating logo image' });

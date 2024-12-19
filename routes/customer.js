@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 const { putObject, getObjectURL, deleteObject } = require('../utils/s3');
+const { empty } = require('@prisma/client/runtime/library');
 
 const prisma = new PrismaClient();
 let mime;
@@ -57,6 +58,28 @@ router.post('/update-profile-image', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Error updating customer photo' });
   }
 });
+
+router.post('/delete-profile-image', authMiddleware, async (req, res) => {
+  try {    
+    let id  = req.user.id;
+    id = parseInt(id)
+    console.log("this is id", id);
+    
+    const customer = await prisma.customer.findUnique({ where: { id } });
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    const response = await deleteObject(customer.customerPhoto)
+    await prisma.customer.update({       
+      where: { id },
+      data: { customerPhoto: "" }
+    });
+    res.status(200).json({response})
+  }
+  catch(error){
+    res.status(500).json({error: error})
+  }
+})
 
 router.get('/image-urls/:id', authMiddleware, async (req, res) => {
   try {

@@ -64,4 +64,6 @@ const couponSchema = z.object({
   contactInfo: z.string().optional(),
 });
 
-module.exports = { customerSchema, staffSchema, storeSchema, couponSchema };
+const passwordSchema = z.string().max(20, "Passwod should not be that long").min(5, "Password should atleast be 5 characters long.");
+
+module.exports = { customerSchema, staffSchema, storeSchema, couponSchema, passwordSchema };

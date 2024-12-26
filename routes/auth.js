@@ -5,8 +5,9 @@ const saltRounds = 10;
 const jwt = require('jsonwebtoken');
 const { generateOTP, sendOTP } = require('../utils/email');
 const router = express.Router();
-const {customerSchema} = require("../schema");
+const {customerSchema, passwordSchema} = require("../schema");
 const { hash } = require('crypto');
+const authMiddleware = require('../middleware/auth');
 require('dotenv').config();
 const { JWT_SECRET } = process.env;
 
@@ -53,38 +54,69 @@ router.post('/register/customer', async (req, res) => {
     }
   });
 
-router.post('/verify/customer', async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-    const customer = await prisma.customer.findUnique({ where: { email } });
+  router.post('/reset-password', authMiddleware, async (req, res) => {
+    try {
+      const { userType, email, password } = req.body;
+      const userModel = prisma[userType];
+      const result = passwordSchema.safeParse(password)
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.issues[0].message });
+      }
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      const user = await userModel.findUnique({ where: { email } });
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        await userModel.update({
+          where: { email },
+          data: {password: hashedPassword}
+        });
+        res.json({ message: 'Password reset successfully' });
 
-    if (!customer || customer.otp !== otp ) {
-      return res.status(400).json({ error: 'Invalid OTP' });
+    } catch (error) {
+      console.error('Error resetting password', error);
+      res.status(500).json({ error: 'Error resetting customer' });
     }
-    else if(customer.otpExpires < new Date()){
-      return res.status(400).json({ error: 'OTP is expired' });
-    }
+  });
 
-    await prisma.customer.update({
-      where: { id: customer.id },
-      data: { isVerified: true, otp: null, otpExpires: null },
-    });
+// router.post('/verify/customer', async (req, res) => {
+//   try {
+//     const { email, otp } = req.body;
+//     const customer = await prisma.customer.findUnique({ where: { email } });
 
-    const token = jwt.sign({ id: customer.id, role: 'customer' }, process.env.JWT_SECRET);
-    res.json({ message: 'Email verified successfully', token });
-  } catch (error) {
-    res.status(500).json({ error: 'Error verifying email' });
-  }
-});
+//     if (!customer || customer.otp !== otp ) {
+//       return res.status(400).json({ error: 'Invalid OTP' });
+//     }
+//     else if(customer.otpExpires < new Date()){
+//       return res.status(400).json({ error: 'OTP is expired' });
+//     }
+
+//     await prisma.customer.update({
+//       where: { id: customer.id },
+//       data: { isVerified: true, otp: null, otpExpires: null },
+//     });
+
+//     const token = jwt.sign({ id: customer.id, role: 'customer' }, process.env.JWT_SECRET);
+//     res.json({ message: 'Email verified successfully', token });
+//   } catch (error) {
+//     res.status(500).json({ error: 'Error verifying email' });
+//   }
+// });
 
 router.post('/resend-otp', async (req, res) => {
     try {
-      const { email, userType } = req.body;
+      let { email, userType, storeId } = req.body;
       const validUserTypes = ['customer', 'store', 'staff'];
       if (!validUserTypes.includes(userType)) {
         return res.status(400).json({ error: 'Invalid user type' });
     }
     const userModel = prisma[userType];
+    if (storeId){
+      const staff = await prisma.staff.findFirst({ where: { storeId } });
+      if (!staff) {
+        return res.status(404).json({ error: 'Invalid Store ID' });
+      }
+    }
     const user = await userModel.findUnique({ where: { email } });
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
@@ -123,15 +155,16 @@ router.post('/resend-otp', async (req, res) => {
       await prisma.customer.update({
         where: { email: email },
         data: { isVerified: true, otp: null, otpExpires: null },
-      });
+      }); 
   
       const token = jwt.sign({ id: user.id, role: 'customer' }, process.env.JWT_SECRET);
-      res.status(201).json({ message: 'Email verified successfully', token});
+      res.status(201).json({ message: 'Email verified successfully', token, role: 'customer'});
     } catch (error) {
       console.error('Error verifying OTP:', error);
       res.status(500).json({ error: 'Error verifying OTP' });
     }
   });
+
   router.post('/verify-otp-owner', async (req, res) => {
     try {
       const { email, otp } = req.body;

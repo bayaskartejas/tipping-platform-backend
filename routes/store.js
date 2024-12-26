@@ -255,6 +255,57 @@ router.get('/staff-image-urls/:storeId', async (req, res) => {
   }
 });
 
+router.get('/:storeId/coupons', authMiddleware, async (req, res) => {
+  try {
+    let { storeId } = req.params;
+    storeId = parseInt(storeId)
+    const coupons = await prisma.coupon.findMany({
+      where: { id: storeId },
+    });
+    res.json(coupons);
+  } catch (error) {
+    console.error('Error fetching coupons:', error);
+    res.status(500).json({ error: 'Error fetching coupons' });
+  }
+});
+
+router.put('/:storeId/coupons/:couponId', authMiddleware, async (req, res) => {
+  try {
+    const { storeId, couponId } = req.params;
+    const { title, code, description, expirationDate } = req.body;
+
+    const updatedCoupon = await prisma.coupon.update({
+      where: { id: parseInt(couponId), storeId },
+      data: {
+        title,
+        code,
+        description,
+        expirationDate: new Date(expirationDate),
+      },
+    });
+
+    res.json(updatedCoupon);
+  } catch (error) {
+    console.error('Error updating coupon:', error);
+    res.status(500).json({ error: 'Error updating coupon' });
+  }
+});
+
+router.delete('/:storeId/coupons/:couponId', authMiddleware, async (req, res) => {
+  try {
+    const { storeId, couponId } = req.params;
+
+    await prisma.coupon.delete({
+      where: { id: parseInt(couponId), storeId },
+    });
+
+    res.json({ message: 'Coupon deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting coupon:', error);
+    res.status(500).json({ error: 'Error deleting coupon' });
+  }
+});
+
 // router.post('/verify', async (req, res) => {
 //   try {
 //     const { ownerPhone, otp } = req.body;
